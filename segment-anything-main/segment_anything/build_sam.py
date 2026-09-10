@@ -11,36 +11,45 @@ from functools import partial
 from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer
 
 
-def build_sam_vit_h(checkpoint=None):
+def build_sam_vit_h(checkpoint=None, vit_patch_size=16, image_size=1024, use_adapter=False, Drop_path=False, adapter_dim=64):
     return _build_sam(
         encoder_embed_dim=1280,
         encoder_depth=32,
         encoder_num_heads=16,
         encoder_global_attn_indexes=[7, 15, 23, 31],
         checkpoint=checkpoint,
+        vit_patch_size=vit_patch_size,  # 传进去
+        image_size=image_size,
+        use_adapter=use_adapter,  # ⭐ 新增
+        Drop_path=Drop_path,
+        adapter_dim=adapter_dim,  # ⭐ 新增
     )
 
 
 build_sam = build_sam_vit_h
 
 
-def build_sam_vit_l(checkpoint=None):
+def build_sam_vit_l(checkpoint=None, vit_patch_size=16, image_size=1024):
     return _build_sam(
         encoder_embed_dim=1024,
         encoder_depth=24,
         encoder_num_heads=16,
         encoder_global_attn_indexes=[5, 11, 17, 23],
         checkpoint=checkpoint,
+        vit_patch_size=vit_patch_size,
+        image_size=image_size,
     )
 
 
-def build_sam_vit_b(checkpoint=None):
+def build_sam_vit_b(checkpoint=None, vit_patch_size=16, image_size=1024):
     return _build_sam(
         encoder_embed_dim=768,
         encoder_depth=12,
         encoder_num_heads=12,
         encoder_global_attn_indexes=[2, 5, 8, 11],
         checkpoint=checkpoint,
+        vit_patch_size=vit_patch_size,
+        image_size=image_size,
     )
 
 
@@ -58,10 +67,13 @@ def _build_sam(
     encoder_num_heads,
     encoder_global_attn_indexes,
     checkpoint=None,
+    vit_patch_size=16,   # ← 默认还是16
+    image_size=1024,
+    use_adapter=False,  # ⭐ 新增这个参数
+    Drop_path=False,
+    adapter_dim=64,   # ⭐ 新增
 ):
     prompt_embed_dim = 256
-    image_size = 1024
-    vit_patch_size = 16
     image_embedding_size = image_size // vit_patch_size
     sam = Sam(
         image_encoder=ImageEncoderViT(
@@ -77,6 +89,9 @@ def _build_sam(
             global_attn_indexes=encoder_global_attn_indexes,
             window_size=14,
             out_chans=prompt_embed_dim,
+            use_adapter=use_adapter,  # ⭐ 新增这一行
+            Drop_path=Drop_path,
+            adapter_dim=adapter_dim,  # ⭐ 新增
         ),
         prompt_encoder=PromptEncoder(
             embed_dim=prompt_embed_dim,

@@ -12,13 +12,6 @@ from typing import Tuple, Type
 
 from .common import MLPBlock
 
-# 全局调试开关
-DEBUG = False  # 调试时设为 True，正常跑实验时设为 False
-
-
-def debug_print(*args, **kwargs):
-    if DEBUG:
-        print(*args, **kwargs, flush=True)
 
 class TwoWayTransformer(nn.Module):
     def __init__(
@@ -94,27 +87,18 @@ class TwoWayTransformer(nn.Module):
         queries = point_embedding
         keys = image_embedding
 
-        debug_print("[TwoWayTransformer] input image_embedding:", image_embedding.shape)
-        debug_print("[TwoWayTransformer] input image_pe:", image_pe.shape)
-        debug_print("[TwoWayTransformer] input point_embedding:", point_embedding.shape)
+        # Apply transformer blocks and final layernorm
+        for layer in self.layers:
+            queries, keys = layer(
+                queries=queries,
+                keys=keys,
+                query_pe=point_embedding,
+                key_pe=image_pe,
+            )
 
-        # Apply transformer blocks
-        for i, layer in enumerate(self.layers):
-            q_pe = point_embedding
-            k_pe = image_pe
-            if q_pe.shape[0] != queries.shape[0]:
-                q_pe = q_pe.expand(queries.shape[0], -1, -1)
-            if k_pe.shape[0] != keys.shape[0]:
-                k_pe = k_pe.expand(keys.shape[0], -1, -1)
-
-            debug_print(
-                f"[TwoWayTransformer] layer {i} queries: {queries.shape}, keys: {keys.shape}, q_pe: {q_pe.shape}, k_pe: {k_pe.shape}")
-            queries, keys = layer(queries=queries, keys=keys, query_pe=q_pe, key_pe=k_pe)
-
-        # Final attention
+        # Apply the final attention layer from the points to the image
         q = queries + point_embedding
         k = keys + image_pe
-        debug_print("[TwoWayTransformer] final attn q:", q.shape, "k:", k.shape)
         attn_out = self.final_attn_token_to_image(q=q, k=k, v=keys)
         queries = queries + attn_out
         queries = self.norm_final_attn(queries)
@@ -165,11 +149,9 @@ class TwoWayAttentionBlock(nn.Module):
         self.skip_first_layer_pe = skip_first_layer_pe
 
     def forward(
-            self, queries: Tensor, keys: Tensor, query_pe: Tensor, key_pe: Tensor
+        self, queries: Tensor, keys: Tensor, query_pe: Tensor, key_pe: Tensor
     ) -> Tuple[Tensor, Tensor]:
         # Self attention block
-        debug_print(f"[TwoWayAttentionBlock] before self_attn queries: {queries.shape}, query_pe: {query_pe.shape}")
-
         if self.skip_first_layer_pe:
             queries = self.self_attn(q=queries, k=queries, v=queries)
         else:
@@ -178,9 +160,7 @@ class TwoWayAttentionBlock(nn.Module):
             queries = queries + attn_out
         queries = self.norm1(queries)
 
-        # Cross attention block
-        debug_print(
-            f"[TwoWayAttentionBlock] before cross_attn_token_to_image q: {(queries + query_pe).shape}, k: {(keys + key_pe).shape}")
+        # Cross attention block, tokens attending to image embedding
         q = queries + query_pe
         k = keys + key_pe
         attn_out = self.cross_attn_token_to_image(q=q, k=k, v=keys)
@@ -193,8 +173,6 @@ class TwoWayAttentionBlock(nn.Module):
         queries = self.norm3(queries)
 
         # Cross attention block, image embedding attending to tokens
-        debug_print(
-            f"[TwoWayAttentionBlock] before cross_attn_image_to_token q: {(keys + key_pe).shape}, k: {(queries + query_pe).shape}")
         q = queries + query_pe
         k = keys + key_pe
         attn_out = self.cross_attn_image_to_token(q=k, k=q, v=queries)
@@ -247,9 +225,6 @@ class Attention(nn.Module):
         q = self._separate_heads(q, self.num_heads)
         k = self._separate_heads(k, self.num_heads)
         v = self._separate_heads(v, self.num_heads)
-
-        # === DEBUG 打印 ===
-        debug_print(f"[Attention] q: {q.shape}, k: {k.shape}, v: {v.shape}")
 
         # Attention
         _, _, _, c_per_head = q.shape
