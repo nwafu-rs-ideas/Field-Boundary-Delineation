@@ -1,0 +1,1 @@
+# Python cacheecho __pycache__/echo *.pycecho *.pyoecho *.pydecho.echo # Python environmentsecho venv/echo .venv/echo env/echo Lib/echo Scripts/echo.echo # IDEecho .idea/echo .vscode/echo.echo # Build and packageecho build/echo dist/echo *.egg-info/echo.echo # Generated filesecho .ipynb_checkpoints/echo output/echo pkgs_dir/
