@@ -2,7 +2,7 @@
 ﻿This repository contains the code for the paper **"SAM-Based Agricultural Field Boundary Delineation with Adaptive Region–Boundary Prompting and Dual-Branch Adapter Fine-Tuning"**. The code provides the training, validation, and testing pipeline on the **AI4Boundaries (AI4B)** dataset.
 ﻿
 ## Requirements
-﻿* Python 3.8+
+* Python 3.8+
 * PyTorch 2.0+ with CUDA
 * xarray
 * rasterio
