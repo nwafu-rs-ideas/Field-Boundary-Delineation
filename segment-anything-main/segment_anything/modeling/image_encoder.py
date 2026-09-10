@@ -7,7 +7,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from timm.models.layers import DropPath
 from typing import Optional, Tuple, Type
 
 from .common import LayerNorm2d, MLPBlock
@@ -18,7 +18,7 @@ class ImageEncoderViT(nn.Module):
     def __init__(
         self,
         img_size: int = 1024,
-        patch_size: int = 16,
+        patch_size: int = 8,
         in_chans: int = 3,
         embed_dim: int = 768,
         depth: int = 12,
@@ -33,6 +33,9 @@ class ImageEncoderViT(nn.Module):
         rel_pos_zero_init: bool = True,
         window_size: int = 0,
         global_attn_indexes: Tuple[int, ...] = (),
+        use_adapter=False,
+        Drop_path=False,
+        adapter_dim: int = 64,  # <<< 增加 adapter_dim
     ) -> None:
         """
         Args:
@@ -82,6 +85,9 @@ class ImageEncoderViT(nn.Module):
                 rel_pos_zero_init=rel_pos_zero_init,
                 window_size=window_size if i not in global_attn_indexes else 0,
                 input_size=(img_size // patch_size, img_size // patch_size),
+                use_adapter=use_adapter,  # ⭐ 新增
+                Drop_path=Drop_path,
+                adapter_dim=adapter_dim,  # <<< 传递给 Block
             )
             self.blocks.append(block)
 
@@ -114,6 +120,15 @@ class ImageEncoderViT(nn.Module):
         x = self.neck(x.permute(0, 3, 1, 2))
 
         return x
+class TransformerAdapter(nn.Module):
+    def __init__(self, hidden_dim=1280, bottleneck_dim=64):
+        super().__init__()
+        self.down = nn.Linear(hidden_dim, bottleneck_dim)
+        self.act = nn.ReLU()
+        self.up = nn.Linear(bottleneck_dim, hidden_dim)
+
+    def forward(self, x):
+        return x + self.up(self.act(self.down(x)))
 
 
 class Block(nn.Module):
@@ -131,6 +146,9 @@ class Block(nn.Module):
         rel_pos_zero_init: bool = True,
         window_size: int = 0,
         input_size: Optional[Tuple[int, int]] = None,
+        use_adapter=False,
+        Drop_path=False,
+        adapter_dim: int = 64,  # <<< 接收 adapter_dim
     ) -> None:
         """
         Args:
@@ -149,6 +167,7 @@ class Block(nn.Module):
         """
         super().__init__()
         self.norm1 = norm_layer(dim)
+        self.use_drop_path = Drop_path
         self.attn = Attention(
             dim,
             num_heads=num_heads,
@@ -160,6 +179,15 @@ class Block(nn.Module):
 
         self.norm2 = norm_layer(dim)
         self.mlp = MLPBlock(embedding_dim=dim, mlp_dim=int(dim * mlp_ratio), act=act_layer)
+        self.drop_path = DropPath(0.1)
+
+
+
+        if use_adapter:
+            self.adapter1 = TransformerAdapter(hidden_dim=dim, bottleneck_dim=adapter_dim)
+            self.adapter2 = TransformerAdapter(hidden_dim=dim, bottleneck_dim=adapter_dim)
+        else:
+            self.adapter1 = self.adapter2 = nn.Identity()
 
         self.window_size = window_size
 
@@ -175,9 +203,20 @@ class Block(nn.Module):
         # Reverse window partition
         if self.window_size > 0:
             x = window_unpartition(x, self.window_size, pad_hw, (H, W))
+        if self.use_drop_path:
+            # attention
+            x = shortcut + self.drop_path(x)
+            x = self.adapter1(x)
 
-        x = shortcut + x
-        x = x + self.mlp(self.norm2(x))
+            # mlp
+            x = x + self.drop_path(self.mlp(self.norm2(x)))
+            x = self.adapter2(x)
+        else:
+            x = shortcut + x
+            x = self.adapter1(x)  # ⭐ Attention 之后插 Adapter
+
+            x = x + self.mlp(self.norm2(x))
+            x = self.adapter2(x)  # ⭐ MLP 之后插 Adapter
 
         return x
 

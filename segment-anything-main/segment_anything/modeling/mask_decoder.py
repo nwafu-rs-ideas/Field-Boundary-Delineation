@@ -12,12 +12,6 @@ from typing import List, Tuple, Type
 
 from .common import LayerNorm2d
 
-# 全局调试开关
-DEBUG = False  # 调试时设为 True，正常跑实验时设为 False
-
-def debug_print(*args, **kwargs):
-    if DEBUG:
-        print(*args, **kwargs, flush=True)
 
 class MaskDecoder(nn.Module):
     def __init__(
@@ -97,14 +91,6 @@ class MaskDecoder(nn.Module):
           torch.Tensor: batched predicted masks
           torch.Tensor: batched predictions of mask quality
         """
-        debug_print("[MASK DECODER] image_embeddings:", image_embeddings.shape)
-        debug_print("[MASK DECODER] image_pe:", image_pe.shape)
-        debug_print("[MASK DECODER] sparse_embeddings:",
-              None if sparse_prompt_embeddings is None else sparse_prompt_embeddings.shape)
-        debug_print("[MASK DECODER] dense_embeddings:",
-              None if dense_prompt_embeddings is None else dense_prompt_embeddings.shape)
-
-
         masks, iou_pred = self.predict_masks(
             image_embeddings=image_embeddings,
             image_pe=image_pe,
@@ -124,102 +110,69 @@ class MaskDecoder(nn.Module):
         return masks, iou_pred
 
     def predict_masks(
-            self,
-            image_embeddings: torch.Tensor,
-            image_pe: torch.Tensor,
-            sparse_prompt_embeddings: torch.Tensor,
-            dense_prompt_embeddings: torch.Tensor,
+        self,
+        image_embeddings: torch.Tensor,
+        image_pe: torch.Tensor,
+        sparse_prompt_embeddings: torch.Tensor,
+        dense_prompt_embeddings: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Predicts masks. See 'forward' for more details."""
-        # Batch and spatial sizes
-        debug_print("[MASK DECODER] >>> entered forward")
+        # Concatenate output tokens
+        output_tokens = torch.cat([self.iou_token.weight, self.mask_tokens.weight], dim=0)
+        output_tokens = output_tokens.unsqueeze(0).expand(sparse_prompt_embeddings.size(0), -1, -1)
+        tokens = torch.cat((output_tokens, sparse_prompt_embeddings), dim=1)
 
         B, C, H, W = image_embeddings.shape
-        debug_print(f"[PREDICT_MASKS] image_embeddings: {image_embeddings.shape}")
-
-        # 1) prepare output tokens (iou + mask tokens)
-        output_tokens = torch.cat([self.iou_token.weight, self.mask_tokens.weight], dim=0)  # [num_mask_tokens, C]
-        output_tokens = output_tokens.unsqueeze(0).expand(B, -1, -1)  # [B, num_mask_tokens, C]
-        tokens = torch.cat((output_tokens, sparse_prompt_embeddings), dim=1)  # [B, N_tokens, C]
-
-        # 2) 处理 dense_prompt_embeddings
+        # --- 对齐 dense_prompt_embeddings ---
         if dense_prompt_embeddings is None:
             dense_prompt_embeddings = torch.zeros_like(image_embeddings)
-            debug_print("[PREDICT_MASKS] dense_prompt_embeddings is None → zeros:", dense_prompt_embeddings.shape)
         else:
-            debug_print("[PREDICT_MASKS] dense_prompt_embeddings in:", dense_prompt_embeddings.shape)
-
-            if dense_prompt_embeddings.dim() == 4:
-                # 批次对齐
-                if dense_prompt_embeddings.shape[0] != B:
-                    if dense_prompt_embeddings.shape[0] == 1:
-                        dense_prompt_embeddings = dense_prompt_embeddings.expand(B, -1, -1, -1)
-                        debug_print("[PREDICT_MASKS] expanded batch:", dense_prompt_embeddings.shape)
-                    else:
-                        raise ValueError(
-                            f"dense_prompt_embeddings batch {dense_prompt_embeddings.shape[0]} "
-                            f"!= image_embeddings batch {B}"
-                        )
-
-                # 空间对齐
-                if dense_prompt_embeddings.shape[-2:] != (H, W):
-                    debug_print("[PREDICT_MASKS] interpolate dense from", dense_prompt_embeddings.shape, "→", (H, W))
-                    dense_prompt_embeddings = F.interpolate(
-                        dense_prompt_embeddings,
-                        size=(H, W),
-                        mode="bilinear",
-                        align_corners=False,
-                    )
-                    debug_print("[PREDICT_MASKS] dense_prompt_embeddings after interp:", dense_prompt_embeddings.shape)
-            else:
-                raise ValueError(
-                    f"Unexpected dense_prompt_embeddings shape {dense_prompt_embeddings.shape}, "
-                    "expected [B,C,H,W]"
+            if dense_prompt_embeddings.shape[0] != B:
+                if dense_prompt_embeddings.shape[0] == 1:
+                    dense_prompt_embeddings = dense_prompt_embeddings.expand(B, -1, -1, -1)
+                else:
+                    raise ValueError(f"dense_prompt_embeddings batch {dense_prompt_embeddings.shape[0]} != {B}")
+            if dense_prompt_embeddings.shape[-2:] != (H, W):
+                dense_prompt_embeddings = F.interpolate(
+                    dense_prompt_embeddings,
+                    size=(H, W),
+                    mode="bilinear",
+                    align_corners=False,
                 )
 
-        # 3) align image_pe
-        debug_print("[PREDICT_MASKS] image_pe in:", image_pe.shape)
+        # --- 对齐 image_pe ---
         if image_pe.shape[-2:] != (H, W):
-            debug_print("[PREDICT_MASKS] interpolate image_pe from", image_pe.shape, "→", (H, W))
             image_pe = F.interpolate(image_pe, size=(H, W), mode="bilinear", align_corners=False)
         if image_pe.shape[0] != B:
             if image_pe.shape[0] == 1:
                 image_pe = image_pe.expand(B, -1, -1, -1)
-                debug_print("[PREDICT_MASKS] expanded image_pe batch:", image_pe.shape)
             else:
                 raise ValueError(f"image_pe batch {image_pe.shape[0]} != {B}")
 
-        # 4) compose inputs for transformer
+        # --- 正确组合 ---
         src = image_embeddings + dense_prompt_embeddings
         pos_src = image_pe
-        debug_print("[PREDICT_MASKS] src:", src.shape, "pos_src:", pos_src.shape, "tokens:", tokens.shape)
+        #print(f"[DEBUG mask_decoder] src + dense_prompt_embeddings.shape={src.shape}")
 
-        # 5) run transformer
-        hs, src = self.transformer(src, pos_src, tokens)  # hs: [B, N_queries, C], src: [B, H*W, C]
+        b, c, h, w = src.shape
 
-        # 6) extract mask/iou tokens
-        iou_token_out = hs[:, 0, :]  # [B, C]
-        mask_tokens_out = hs[:, 1: (1 + self.num_mask_tokens), :]  # [B, num_mask_tokens, C]
+        # Run the transformer
+        hs, src = self.transformer(src, pos_src, tokens)
+        iou_token_out = hs[:, 0, :]
+        mask_tokens_out = hs[:, 1 : (1 + self.num_mask_tokens), :]
 
-        # 7) convert src back to [B, C, H, W] for upscaling
-        b, n, c = src.shape  # n should equal H*W
-        assert b == B, f"batch mismatch: transformer returned batch {b} vs image batch {B}"
-        assert n == H * W, f"spatial mismatch: transformer n {n} != H*W {H * W}"
-        src = src.transpose(1, 2).contiguous().view(b, c, H, W)  # [B, C, H, W]
-
-        # 8) upscaling and hypernetwork
-        upscaled_embedding = self.output_upscaling(src)  # [B, C_up, H_up, W_up]
-
+        # Upscale mask embeddings and predict masks using the mask tokens
+        src = src.transpose(1, 2).view(b, c, h, w)
+        upscaled_embedding = self.output_upscaling(src)
         hyper_in_list: List[torch.Tensor] = []
         for i in range(self.num_mask_tokens):
-            hyper_in_list.append(self.output_hypernetworks_mlps[i](mask_tokens_out[:, i, :]))  # [B, C_up]
-        hyper_in = torch.stack(hyper_in_list, dim=1)  # [B, num_mask_tokens, C_up]
+            hyper_in_list.append(self.output_hypernetworks_mlps[i](mask_tokens_out[:, i, :]))
+        hyper_in = torch.stack(hyper_in_list, dim=1)
+        b, c, h, w = upscaled_embedding.shape
+        masks = (hyper_in @ upscaled_embedding.view(b, c, h * w)).view(b, -1, h, w)
 
-        b, c_up, h_up, w_up = upscaled_embedding.shape
-        masks = (hyper_in @ upscaled_embedding.view(b, c_up, h_up * w_up)).view(b, -1, h_up, w_up)
-
-        # 9) iou preds
-        iou_pred = self.iou_prediction_head(iou_token_out)  # [B, num_mask_tokens]
+        # Generate mask quality predictions
+        iou_pred = self.iou_prediction_head(iou_token_out)
 
         return masks, iou_pred
 
@@ -249,3 +202,5 @@ class MLP(nn.Module):
         if self.sigmoid_output:
             x = F.sigmoid(x)
         return x
+
+
