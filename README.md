@@ -28,6 +28,7 @@ pip install -e .
 ﻿The AI4Boundaries (AI4B) dataset files used for model training and evaluation are not included in this repository due to their large size.
 ﻿The original **AI4Boundaries (AI4B)** dataset can be downloaded from the [JRC Open Data Catalogue](https://data.jrc.ec.europa.eu/dataset/0e79ce5d-e4c8-4721-8773-59a4acf2c9c9).
 The downloaded AI4B data should be placed in a data directory with the following structure:
+```text
 AI4BOUNDARIES/
 └── sentinel2/
 ├── ai4boundaries_ftp_urls_sentinel2_split.csv
@@ -41,6 +42,7 @@ AI4BOUNDARIES/
 ├── train.zip
 ├── val.csv
 └── val.zip
+```
 ﻿The `images/`and `masks/` directories contain the original Sentinel-2 imagery and corresponding annotations. The `train.csv`, `val.csv`, and `test.csv` files provide the corresponding data splits.
 ﻿
 ## Pretrained Models
