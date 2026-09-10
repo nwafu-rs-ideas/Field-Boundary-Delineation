@@ -1,0 +1,26 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Python environments
+venv/
+.venv/
+env/
+Lib/
+Scripts/
+
+# IDE
+.idea/
+.vscode/
+
+# Build and package
+build/
+dist/
+*.egg-info/
+
+# Generated files
+.ipynb_checkpoints/
+output/
+pkgs_dir/
