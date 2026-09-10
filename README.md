@@ -14,9 +14,10 @@
 * scikit-learn
 ﻿
 The modified SAM implementation is included in `segment-anything-main/`. Install it in editable mode:
+```text
 cd segment-anything-main
 pip install -e .
-
+```
 ﻿The code has been tested in the following environment:
 ﻿* OS: Windows 10
 * GPU: NVIDIA RTX A4000 (16 GB)
@@ -50,17 +51,22 @@ AI4BOUNDARIES/
 The experiments use the **SAM ViT-H** model.
 ﻿Download the pretrained checkpoint `sam_vit_h_4b8939.pth` from the official [Segment Anything repository](https://github.com/facebookresearch/segment-anything) and specify its path in `SAM_CKPT`.
 ﻿For example:
+```text
 SAM_CKPT = r"path/to/sam_vit_h_4b8939.pth"
-
+```
 The SAM checkpoint is not included in this repository.
 ﻿
 ### Prompt Network
 A pretrained prompt network is required to generate the region and boundary prompts used by the proposed framework. The resulting checkpoint should be specified in `PROMPTER_CKPT`.
 ﻿
 ## Usage
-The main script is: run_sam_adapter_ai4b_patch_encoder.py
+The main script is:
+```text
+run_sam_adapter_ai4b_patch_encoder.py
+```
 Before running the script, modify the configuration section according to the local environment.
 The main paths to be configured include:
+```text
 ─ SAM_CKPT
 ─ PROMPTER_CKPT
 ─ TRAIN_NC
@@ -74,10 +80,15 @@ The main paths to be configured include:
 ─ TEST_BOUNDARY
 ─ OUT_DIR
 ─ CKPT_DIR
-Then run: python run_sam_adapter_ai4b_patch_encoder.py
+```
+Then run:
+```text
+python run_sam_adapter_ai4b_patch_encoder.py
+```
 The script performs model training and validation and provides the test evaluation pipeline.
 
 ## Code Structure
+```text
 .
 ├── README.md
 ├── LICENSE
@@ -91,12 +102,14 @@ The script performs model training and validation and provides the test evaluati
     ├── notebooks/
     ├── setup.py
     └── setup.cfg
+```
 ─ run_sam_adapter_ai4b_patch_encoder.py: Main training and evaluation script. It defines the dataset loading, model construction, training loop, validation, and testing procedures.
 ─ segment-anything-main/: Modified SAM implementation used in this study, including the Adapter modules and dual-branch mask decoder.
 
 ## Citation
 If you find this code useful in your research, please cite our paper:
+```text
 [Paper citation will be added after publication.]
-
+```
 ## License
 This project is released under the **MIT License**. See the [LICENSE] file for details.
