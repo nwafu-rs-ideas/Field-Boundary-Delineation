@@ -28,22 +28,22 @@ sys.path.insert(0, r"D:\AResearchDirection1\segment-anything-main")
 
 # --- SAM 包加载 ---
 import importlib
-import segment_anything1
+import segment_anything
 import importlib.util
 
 # ✅ 直接导入模块对象，而不是属性引用
-build_sam_module = importlib.import_module("segment_anything1.build_sam")
+build_sam_module = importlib.import_module("segment_anything.build_sam")
 # ✅ 强制重新加载磁盘版本（确保修改过的 build_sam.py 生效）
 importlib.reload(build_sam_module)
 
 print("[DEBUG] build_sam loaded from:", build_sam_module.__file__)
 
 # 其他导入
-import segment_anything1.modeling.image_encoder as md
+import segment_anything.modeling.image_encoder as md
 
 print("[DEBUG] image_encoder loaded from:", md.__file__)
 # 顶部增加：
-from segment_anything1.modeling.image_encoder import TransformerAdapter as EncTransformerAdapter
+from segment_anything.modeling.image_encoder import TransformerAdapter as EncTransformerAdapter
 
 
 def run_sam_with_adapter(prompter_model, adapter_dim, LR, EPOCHS, subset_ratio, a, train_head, enc_strategy, do_test):
