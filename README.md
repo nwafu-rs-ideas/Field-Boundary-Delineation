@@ -45,7 +45,8 @@ AI4BOUNDARIES/
 └── val.zip
 ```
 ﻿The `images/`and `masks/` directories contain the original Sentinel-2 imagery and corresponding annotations. The `train.csv`, `val.csv`, and `test.csv` files provide the corresponding data splits.
-﻿
+## Generated Boundary Labels
+The boundary ground-truth labels for the representative samples analyzed in our paper are provided in the boundary_ground_truth/ directory, named AT_10038_S2_10m_256_boundary.tif and AT_3581_S2_10m_256_boundary.tif.
 ## Pretrained Models
 ### SAM ViT-H
 The experiments use the **SAM ViT-H** model.
